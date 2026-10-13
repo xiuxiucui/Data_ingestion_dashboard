@@ -1,0 +1,142 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta
+      name="description"
+      content="A lightweight workbench for the schema-driven dashboard API."
+    >
+    <title>Dashboard API Workbench</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
+    <script src="{{ url_for('static', filename='app.js') }}" defer></script>
+  </head>
+  <body>
+    <header class="page-header">
+      <div>
+        <p class="eyebrow">Schema-driven platform</p>
+        <h1>Dashboard API Workbench</h1>
+        <p class="intro">
+          Register a schema, ingest rows, configure a dashboard, and inspect the result.
+        </p>
+      </div>
+      <div class="service-status" aria-live="polite">
+        <span id="health-dot" class="status-dot"></span>
+        <span id="health-label">Checking API…</span>
+      </div>
+    </header>
+
+    <main>
+      <ol class="steps" aria-label="API workflow">
+        <li><span>1</span> Schema</li>
+        <li><span>2</span> Data</li>
+        <li><span>3</span> Dashboard</li>
+        <li><span>4</span> Result</li>
+      </ol>
+
+      <section class="workspace" aria-label="API request forms">
+        <article class="request-card">
+          <div class="card-heading">
+            <div>
+              <p class="step-label">Step 1</p>
+              <h2>Register schema</h2>
+            </div>
+            <code>POST /schema</code>
+          </div>
+          <label for="schema-payload">JSON request body</label>
+          <textarea id="schema-payload" spellcheck="false">{
+  "name": "trade",
+  "fields": [
+    {"name": "tradeId", "type": "string", "required": true},
+    {"name": "amount", "type": "number", "required": true, "aggregation": "sum"},
+    {"name": "status", "type": "string"}
+  ]
+}</textarea>
+          <button id="send-schema" type="button">Register schema</button>
+          <div class="response-header">
+            <span>Response</span>
+            <span id="schema-status" class="response-status">Not sent</span>
+          </div>
+          <pre id="schema-response" class="response-body">Run the request to see its response.</pre>
+        </article>
+
+        <article class="request-card">
+          <div class="card-heading">
+            <div>
+              <p class="step-label">Step 2</p>
+              <h2>Ingest rows</h2>
+            </div>
+            <code>POST /ingest</code>
+          </div>
+          <label for="ingest-payload">JSON request body</label>
+          <textarea id="ingest-payload" spellcheck="false">{
+  "schema": "trade",
+  "rows": [
+    {"tradeId": "T001", "amount": 1000, "status": "OPEN"},
+    {"tradeId": "T002", "amount": 1500.5, "status": "CLOSED"}
+  ]
+}</textarea>
+          <button id="send-ingest" type="button">Ingest rows</button>
+          <div class="response-header">
+            <span>Response</span>
+            <span id="ingest-status" class="response-status">Not sent</span>
+          </div>
+          <pre id="ingest-response" class="response-body">Run the request to see its response.</pre>
+        </article>
+
+        <article class="request-card">
+          <div class="card-heading">
+            <div>
+              <p class="step-label">Step 3</p>
+              <h2>Register dashboard</h2>
+            </div>
+            <code>POST /dashboard</code>
+          </div>
+          <label for="dashboard-payload">JSON request body</label>
+          <textarea id="dashboard-payload" spellcheck="false">{
+  "name": "trade-dashboard",
+  "schema": "trade",
+  "views": [
+    {"type": "summary", "field": "amount", "aggregation": "sum"},
+    {"type": "table", "columns": ["tradeId", "amount", "status"]}
+  ]
+}</textarea>
+          <button id="send-dashboard" type="button">Register dashboard</button>
+          <div class="response-header">
+            <span>Response</span>
+            <span id="dashboard-status" class="response-status">Not sent</span>
+          </div>
+          <pre id="dashboard-response" class="response-body">Run the request to see its response.</pre>
+        </article>
+
+        <article class="request-card result-card">
+          <div class="card-heading">
+            <div>
+              <p class="step-label">Step 4</p>
+              <h2>Generate dashboard</h2>
+            </div>
+            <code>GET /dashboard/:name</code>
+          </div>
+          <label for="dashboard-name">Dashboard name</label>
+          <input id="dashboard-name" type="text" value="trade-dashboard">
+          <button id="get-dashboard" type="button">Load dashboard</button>
+          <div class="response-header">
+            <span>Rendered result</span>
+            <span id="result-status" class="response-status">Not sent</span>
+          </div>
+          <div id="dashboard-render" class="dashboard-render empty-state">
+            Load a dashboard to render its configured views.
+          </div>
+          <details>
+            <summary>Raw JSON response</summary>
+            <pre id="result-response" class="response-body">No response yet.</pre>
+          </details>
+        </article>
+      </section>
+    </main>
+
+    <footer>
+      Data is stored in memory and resets when the Flask server restarts.
+    </footer>
+  </body>
+</html>
