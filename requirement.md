@@ -182,3 +182,71 @@ For ingested rows with `SG` amounts of `1000` and `1500.5`, and one `HK` amount 
   ]
 }
 ```
+
+## Version 3: Pandas-backed data storage and dashboard calculation
+
+Keep the existing four endpoints and all Version 1 and Version 2 request and
+response formats. Replace the per-schema list of row dictionaries with one
+in-memory pandas `DataFrame` per registered schema. Use pandas for dashboard
+projection, grouping, and aggregation.
+
+Pandas is the in-process storage and calculation engine in this version. Data,
+schemas, and dashboard configurations still reset when the Flask process
+restarts; restart-safe persistence is outside Version 3.
+
+### Data storage rules
+
+1. Create an empty DataFrame when a schema is registered. Its columns must use
+   schema declaration order and these nullable pandas dtypes:
+
+   | API field type | pandas dtype |
+   | --- | --- |
+   | `string` | `string` |
+   | `number` | `Float64` |
+   | `integer` | `Int64` |
+   | `boolean` | `boolean` |
+
+2. Pydantic remains the source of truth for request validation. Only construct
+   and append a DataFrame after every row in the ingestion batch has passed the
+   dynamic Pydantic row model. An invalid batch must not change stored data.
+3. Cast an accepted batch to the registered schema's pandas dtypes before it is
+   appended. Preserve schema column order and ingestion row order, and reset the
+   DataFrame index after appending.
+4. Optional omitted or JSON `null` values are stored as pandas missing values.
+   Convert pandas missing values (`pd.NA`/`NaN`) back to JSON `null` in API
+   responses.
+5. Convert NumPy and pandas scalar results to native Python values before JSON
+   serialization.
+6. Repository reads must return a DataFrame copy so dashboard calculation cannot
+   mutate stored rows. Repository mutation and snapshot creation remain protected
+   by the existing lock.
+
+### Dashboard calculation rules
+
+1. A `table` view selects its configured DataFrame columns in configuration
+   order and emits records in ingestion order.
+2. A `summary` view uses the selected pandas Series. Missing values are excluded
+   from all calculations. Preserve the existing empty-input results: `count` and
+   `sum` return `0`; `average`, `min`, and `max` return `null`.
+3. An `aggregate_table` view uses pandas grouping with sorting disabled and null
+   groups enabled. Groups must remain in first-seen order, including the null
+   group, and missing display values follow the same calculation rules as summary
+   views.
+4. `count` is valid for every supported field type and counts non-null values.
+   `sum`, `average`, `min`, and `max` remain restricted to `number` and `integer`.
+5. The generated dashboard JSON contract remains unchanged, so no frontend
+   rendering change is required for Version 3.
+
+### Dependency and test requirements
+
+1. Add pandas as an application dependency and support pandas 2.x.
+2. Retain all existing endpoint tests. Add coverage for schema-to-dtype mapping,
+   missing-value serialization, DataFrame snapshot isolation, atomic ingestion,
+   group ordering (including null), and native JSON scalar conversion.
+
+### Deferred scaling work
+
+Large table views still return every ingested row. Pagination, filtering,
+sorting, row limits, disk persistence (for example Parquet), multi-process
+coordination, and database-backed storage are separate API and architecture
+changes and are not part of Version 3.

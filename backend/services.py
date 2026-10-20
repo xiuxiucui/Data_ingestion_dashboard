@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
+import pandas as pd
 from pydantic import (
     BaseModel,
     ConfigDict,
@@ -26,7 +27,7 @@ from backend.models import (
     SummaryView,
     TableView,
 )
-from backend.storage import InMemoryRepository
+from backend.storage import PandasRepository
 
 
 FIELD_TYPE_MAP: dict[FieldType, Any] = {
@@ -45,7 +46,7 @@ NUMERIC_AGGREGATIONS = {
 
 
 class SchemaService:
-    def __init__(self, repository: InMemoryRepository) -> None:
+    def __init__(self, repository: PandasRepository) -> None:
         self.repository = repository
 
     def register(self, schema: SchemaRegistration) -> dict[str, Any]:
@@ -77,7 +78,7 @@ class SchemaService:
 
 
 class IngestionService:
-    def __init__(self, repository: InMemoryRepository) -> None:
+    def __init__(self, repository: PandasRepository) -> None:
         self.repository = repository
 
     def ingest(self, request: IngestRequest) -> dict[str, Any]:
@@ -115,7 +116,7 @@ class IngestionService:
 
 
 class DashboardService:
-    def __init__(self, repository: InMemoryRepository) -> None:
+    def __init__(self, repository: PandasRepository) -> None:
         self.repository = repository
 
     def register(self, dashboard: DashboardConfig) -> dict[str, Any]:
@@ -248,8 +249,8 @@ class DashboardService:
                 f"Dashboard '{name}' was not found.",
             )
 
-        rows = self.repository.get_rows(dashboard.schema_name)
-        rendered_views = [self._render_view(view, rows) for view in dashboard.views]
+        frame = self.repository.get_dataframe(dashboard.schema_name)
+        rendered_views = [self._render_view(view, frame) for view in dashboard.views]
         return {
             "name": dashboard.name,
             "schema": dashboard.schema_name,
@@ -259,41 +260,33 @@ class DashboardService:
     @staticmethod
     def _render_view(
         view: SummaryView | TableView | AggregateTableView,
-        rows: list[dict[str, Any]],
+        frame: pd.DataFrame,
     ) -> dict[str, Any]:
         if isinstance(view, TableView):
             return {
                 "type": "table",
                 "columns": view.columns,
-                "rows": [
-                    {column: row.get(column) for column in view.columns}
-                    for row in rows
-                ],
+                "rows": DashboardService._records(frame.loc[:, view.columns]),
             }
 
         if isinstance(view, AggregateTableView):
-            grouped_rows: dict[Any, list[dict[str, Any]]] = {}
-            for row in rows:
-                group_value = row.get(view.aggregate_column)
-                grouped_rows.setdefault(group_value, []).append(row)
-
             rendered_rows = []
-            for group_value, group_rows in grouped_rows.items():
+            groups = frame.groupby(
+                view.aggregate_column,
+                sort=False,
+                dropna=False,
+            )
+            for group_value, group_frame in groups:
                 rendered_values = {}
                 for column, configuration in view.display_columns.items():
-                    values = [
-                        row[column]
-                        for row in group_rows
-                        if row.get(column) is not None
-                    ]
                     rendered_values[column] = DashboardService._aggregate(
-                        values,
+                        group_frame[column],
                         configuration.aggregation,
                     )
 
                 rendered_rows.append(
                     {
-                        "group_value": group_value,
+                        "group_value": DashboardService._json_scalar(group_value),
                         "values": rendered_values,
                     }
                 )
@@ -308,8 +301,7 @@ class DashboardService:
                 "rows": rendered_rows,
             }
 
-        values = [row[view.field] for row in rows if row.get(view.field) is not None]
-        value = DashboardService._aggregate(values, view.aggregation)
+        value = DashboardService._aggregate(frame[view.field], view.aggregation)
 
         return {
             "type": "summary",
@@ -319,14 +311,35 @@ class DashboardService:
         }
 
     @staticmethod
-    def _aggregate(values: list[Any], aggregation: Aggregation) -> Any:
+    def _aggregate(values: pd.Series, aggregation: Aggregation) -> Any:
+        values = values.dropna()
         if aggregation == Aggregation.COUNT:
-            return len(values)
-        if aggregation == Aggregation.SUM:
-            return sum(values)
-        if aggregation == Aggregation.AVERAGE:
-            return sum(values) / len(values) if values else None
-        if aggregation == Aggregation.MIN:
-            return min(values) if values else None
-        return max(values) if values else None
+            result = len(values)
+        elif aggregation == Aggregation.SUM:
+            result = values.sum()
+        elif aggregation == Aggregation.AVERAGE:
+            result = values.mean() if not values.empty else None
+        elif aggregation == Aggregation.MIN:
+            result = values.min() if not values.empty else None
+        else:
+            result = values.max() if not values.empty else None
+        return DashboardService._json_scalar(result)
+
+    @staticmethod
+    def _records(frame: pd.DataFrame) -> list[dict[str, Any]]:
+        return [
+            {
+                column: DashboardService._json_scalar(value)
+                for column, value in zip(frame.columns, row, strict=True)
+            }
+            for row in frame.itertuples(index=False, name=None)
+        ]
+
+    @staticmethod
+    def _json_scalar(value: Any) -> Any:
+        if value is None or pd.isna(value):
+            return None
+        if hasattr(value, "item"):
+            return value.item()
+        return value
 

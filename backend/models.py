@@ -55,7 +55,12 @@ class FieldDefinition(StrictApiModel):
 
     @model_validator(mode="after")
     def validate_aggregation(self) -> "FieldDefinition":
-        numeric_aggregations = {member.value for member in Aggregation.__members__.values()}
+        numeric_aggregations = {
+            Aggregation.SUM,
+            Aggregation.AVERAGE,
+            Aggregation.MIN,
+            Aggregation.MAX,
+        }
         numeric_types = {FieldType.NUMBER, FieldType.INTEGER}
         if self.aggregation in numeric_aggregations and self.type not in numeric_types:
             raise ValueError(

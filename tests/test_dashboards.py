@@ -206,3 +206,18 @@ def test_returns_not_found_for_unknown_dashboard(client):
     assert response.status_code == 404
     assert response.get_json()["error"]["code"] == "DASHBOARD_NOT_FOUND"
 
+
+def test_table_serializes_pandas_missing_values_as_json_null(client, registered_trade):
+    client.post(
+        "/ingest",
+        json={"schema": "trade", "rows": [{"tradeId": "T001", "amount": 1000}]},
+    )
+    client.post("/dashboard", json=DASHBOARD)
+
+    response = client.get("/dashboard/trade-dashboard")
+
+    assert response.status_code == 200
+    assert response.get_json()["views"][1]["rows"] == [
+        {"tradeId": "T001", "amount": 1000.0, "status": None}
+    ]
+

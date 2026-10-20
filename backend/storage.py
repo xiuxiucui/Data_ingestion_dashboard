@@ -1,22 +1,31 @@
-"""Thread-safe in-memory repository used by the services."""
+"""Thread-safe, pandas-backed in-memory repository used by the services."""
 
 from __future__ import annotations
 
 from threading import RLock
 from typing import Any
 
+import pandas as pd
 from pydantic import BaseModel
 
-from backend.models import DashboardConfig, SchemaRegistration
+from backend.models import DashboardConfig, FieldType, SchemaRegistration
 
 
-class InMemoryRepository:
-    """Own all process-local application state."""
+PANDAS_DTYPES: dict[FieldType, str] = {
+    FieldType.STRING: "string",
+    FieldType.NUMBER: "Float64",
+    FieldType.INTEGER: "Int64",
+    FieldType.BOOLEAN: "boolean",
+}
+
+
+class PandasRepository:
+    """Own all process-local state and keep each schema's rows in a DataFrame."""
 
     def __init__(self) -> None:
         self._schemas: dict[str, SchemaRegistration] = {}
         self._row_models: dict[str, type[BaseModel]] = {}
-        self._rows: dict[str, list[dict[str, Any]]] = {}
+        self._frames: dict[str, pd.DataFrame] = {}
         self._dashboards: dict[str, DashboardConfig] = {}
         self._lock = RLock()
 
@@ -30,8 +39,17 @@ class InMemoryRepository:
                 return False
             self._schemas[schema.name] = schema
             self._row_models[schema.name] = row_model
-            self._rows[schema.name] = []
+            self._frames[schema.name] = self._empty_frame(schema)
             return True
+
+    @staticmethod
+    def _empty_frame(schema: SchemaRegistration) -> pd.DataFrame:
+        return pd.DataFrame(
+            {
+                field.name: pd.Series(dtype=PANDAS_DTYPES[field.type])
+                for field in schema.fields
+            }
+        )
 
     def get_schema(self, name: str) -> SchemaRegistration | None:
         with self._lock:
@@ -43,12 +61,34 @@ class InMemoryRepository:
 
     def append_rows(self, schema_name: str, rows: list[dict[str, Any]]) -> int:
         with self._lock:
-            self._rows[schema_name].extend(dict(row) for row in rows)
-            return len(self._rows[schema_name])
+            current = self._frames[schema_name]
+            incoming = pd.DataFrame.from_records(rows, columns=current.columns)
+            incoming = incoming.astype(current.dtypes.to_dict())
+            self._frames[schema_name] = (
+                incoming.reset_index(drop=True)
+                if current.empty
+                else pd.concat([current, incoming], ignore_index=True)
+            )
+            return len(self._frames[schema_name])
+
+    def get_dataframe(self, schema_name: str) -> pd.DataFrame:
+        """Return an isolated snapshot so callers cannot mutate stored data."""
+        with self._lock:
+            frame = self._frames.get(schema_name)
+            if frame is None:
+                return pd.DataFrame()
+            return frame.copy(deep=True)
 
     def get_rows(self, schema_name: str) -> list[dict[str, Any]]:
-        with self._lock:
-            return [dict(row) for row in self._rows.get(schema_name, [])]
+        """Return records for compatibility with repository consumers."""
+        frame = self.get_dataframe(schema_name)
+        return [
+            {
+                column: None if pd.isna(value) else value
+                for column, value in zip(frame.columns, row, strict=True)
+            }
+            for row in frame.itertuples(index=False, name=None)
+        ]
 
     def add_dashboard(self, dashboard: DashboardConfig) -> bool:
         with self._lock:
@@ -60,4 +100,8 @@ class InMemoryRepository:
     def get_dashboard(self, name: str) -> DashboardConfig | None:
         with self._lock:
             return self._dashboards.get(name)
+
+
+# Preserve the public name used by earlier versions and external tests.
+InMemoryRepository = PandasRepository
 

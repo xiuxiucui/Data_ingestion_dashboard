@@ -1,5 +1,7 @@
 """Data ingestion API tests."""
 
+import pandas as pd
+
 
 def test_ingests_valid_rows(client, registered_trade):
     response = client.post(
@@ -66,5 +68,46 @@ def test_rejects_unknown_fields_and_type_error(client, registered_trade):
     locations = [item["location"] for item in response.get_json()["error"]["details"]]
     assert ["rows", 0, "amount", "int"] in locations
     assert ["rows", 0, "unexpected"] in locations
+
+
+def test_stores_rows_with_registered_nullable_pandas_dtypes(
+    client,
+    registered_trade,
+    repository,
+):
+    response = client.post(
+        "/ingest",
+        json={
+            "schema": "trade",
+            "rows": [
+                {"tradeId": "T001", "amount": 1000, "settled": True},
+                {"tradeId": "T002", "amount": 125.5, "settled": None},
+            ],
+        },
+    )
+
+    assert response.status_code == 201
+    frame = repository.get_dataframe("trade")
+    assert frame.columns.tolist() == ["tradeId", "amount", "status", "settled", "desk"]
+    assert {column: str(dtype) for column, dtype in frame.dtypes.items()} == {
+        "tradeId": "string",
+        "amount": "Float64",
+        "status": "string",
+        "settled": "boolean",
+        "desk": "string",
+    }
+    assert pd.isna(frame.loc[1, "settled"])
+
+
+def test_dataframe_reads_are_isolated_snapshots(client, registered_trade, repository):
+    client.post(
+        "/ingest",
+        json={"schema": "trade", "rows": [{"tradeId": "T001", "amount": 1000}]},
+    )
+
+    snapshot = repository.get_dataframe("trade")
+    snapshot.loc[0, "amount"] = 9999
+
+    assert repository.get_dataframe("trade").loc[0, "amount"] == 1000
 
 

@@ -1,6 +1,6 @@
 # Schema-Driven Dashboard Platform
 
-A lightweight Flask API that registers data schemas, validates and ingests rows, registers dashboard configurations, and generates dashboard-ready data. All state is held in memory and is reset whenever the application restarts.
+A lightweight Flask API that registers data schemas, validates and ingests rows, registers dashboard configurations, and generates dashboard-ready data. Rows are held in typed, per-schema pandas DataFrames. All state is in memory and is reset whenever the application restarts.
 
 ## Features
 
@@ -8,10 +8,12 @@ A lightweight Flask API that registers data schemas, validates and ingests rows,
 - Strict validation with no automatic string-to-number coercion
 - Required-field and unknown-field validation
 - Atomic batch ingestion
+- Nullable pandas dtypes mapped from registered schema types
 - Summary views using `sum`, `average`, `min`, `max`, and `count`
+- Pandas-backed projection, grouping, and aggregation
 - Table views containing configured columns
 - Consistent JSON error responses
-- Thread-safe in-memory storage
+- Thread-safe pandas-backed in-memory storage
 - Lightweight browser UI with editable example requests and rendered dashboard results
 
 ## Requirements
@@ -304,7 +306,7 @@ backend/
 |-- errors.py    # Stable API error representation
 |-- models.py    # Pydantic request/configuration models
 |-- services.py  # Business logic and dynamic row models
-`-- storage.py   # Thread-safe in-memory repository
+`-- storage.py   # Thread-safe pandas DataFrame repository
 frontend/
 |-- templates/   # Browser workbench HTML
 `-- static/      # UI styles and request-handling JavaScript

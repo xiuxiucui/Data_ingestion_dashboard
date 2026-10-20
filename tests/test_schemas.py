@@ -61,6 +61,18 @@ def test_rejects_numeric_aggregation_on_string_field(client):
     assert "requires a numeric field" in response.get_json()["error"]["details"][0]["message"]
 
 
+def test_allows_count_metadata_on_string_field(client):
+    response = client.post(
+        "/schema",
+        json={
+            "name": "events",
+            "fields": [{"name": "category", "type": "string", "aggregation": "count"}],
+        },
+    )
+
+    assert response.status_code == 201
+
+
 def test_requires_json_content_type(client):
     response = client.post("/schema", data="not-json", content_type="text/plain")
 

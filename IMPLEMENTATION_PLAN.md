@@ -4,14 +4,19 @@ This document turns the requirements in `requirement.md` into an implementation 
 
 ## Scope
 
-Build the required backend using Flask, Pydantic v2, and in-memory storage, then add a lightweight browser UI for exercising the completed API.
+Build the required backend using Flask, Pydantic v2, and pandas-backed in-memory storage, then add a lightweight browser UI for exercising the completed API.
 
 ## Key Design Decisions
 
 - Use Flask for HTTP routing and application setup.
 - Use Pydantic for request validation and for dynamically generated row models.
 - Log request metadata, complete JSON bodies, and response outcomes at `INFO` using fixed application settings.
-- Store schemas, generated row models, ingested rows, and dashboard configurations in memory.
+- Store each schema's ingested rows in a typed pandas DataFrame. Keep schemas,
+  generated row models, and dashboard configurations in memory.
+- Treat Pydantic as the validation boundary and pandas as the storage and
+  dashboard calculation engine.
+- Return DataFrame copies to readers and normalize pandas missing/scalar values
+  before JSON serialization.
 - Require each dashboard configuration to name its source schema. The assignment example omits this relationship, but dashboard generation cannot reliably select data without it.
 - Validate ingestion batches atomically: store all rows only when every row is valid.
 - Reject implicit type coercion, unknown fields, duplicate names, and incompatible dashboard configurations.
@@ -25,6 +30,10 @@ Build the required backend using Flask, Pydantic v2, and in-memory storage, then
 | `number` | strict integer or strict float |
 | `integer` | strict integer |
 | `boolean` | strict boolean |
+
+Accepted values are stored using pandas `string`, `Float64`, `Int64`, and
+`boolean` dtypes respectively. These nullable dtypes allow optional fields to be
+represented without changing a column's declared type.
 
 Optional fields may be omitted or set to `null`. Required fields must be present and non-null.
 
@@ -150,6 +159,9 @@ tests/
 - [x] Run the complete test suite and manually exercise the main workflow.
 - [x] Add correlated request/response logging with configurable body logging.
 - [x] Add a lightweight browser UI for the complete API workflow.
+- [x] Replace row dictionaries with per-schema pandas DataFrames.
+- [x] Use pandas for table projection, grouped aggregation, and summary calculations.
+- [x] Normalize pandas missing values and scalar results for JSON responses.
 
 ## Test Checklist
 
@@ -169,4 +181,5 @@ tests/
 ## Deferred Work
 
 - Advanced dashboard visualizations
-- Persistent storage and schema migrations
+- Restart-safe storage, schema migrations, and multi-process coordination
+- Table pagination, filtering, sorting, and response-size limits

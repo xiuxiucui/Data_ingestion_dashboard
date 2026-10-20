@@ -13,14 +13,14 @@ from backend.errors import ApiError, format_validation_errors
 from backend.logging_config import configure_logging, request_id
 from backend.models import DashboardConfig, IngestRequest, SchemaRegistration
 from backend.services import DashboardService, IngestionService, SchemaService
-from backend.storage import InMemoryRepository
+from backend.storage import PandasRepository
 
 
 RequestModel = TypeVar("RequestModel", bound=BaseModel)
 FRONTEND_ROOT = Path(__file__).resolve().parent.parent / "frontend"
 
 
-def create_app(repository: InMemoryRepository | None = None) -> Flask:
+def create_app(repository: PandasRepository | None = None) -> Flask:
     app = Flask(
         __name__,
         template_folder=str(FRONTEND_ROOT / "templates"),
@@ -35,7 +35,7 @@ def create_app(repository: InMemoryRepository | None = None) -> Flask:
     )
     configure_logging(app)
 
-    data_store = repository or InMemoryRepository()
+    data_store = repository or PandasRepository()
     schema_service = SchemaService(data_store)
     ingestion_service = IngestionService(data_store)
     dashboard_service = DashboardService(data_store)
