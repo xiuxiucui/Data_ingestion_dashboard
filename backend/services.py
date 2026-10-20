@@ -17,6 +17,7 @@ from pydantic import (
 
 from backend.errors import ApiError, format_validation_errors
 from backend.models import (
+    AggregateTableView,
     Aggregation,
     DashboardConfig,
     FieldType,
@@ -164,6 +165,58 @@ class DashboardService:
                                 "type": "unknown_field",
                             }
                         )
+            elif isinstance(view, AggregateTableView):
+                if view.aggregate_column not in fields:
+                    details.append(
+                        {
+                            "location": ["views", index, "aggregate_column"],
+                            "message": (
+                                f"Field '{view.aggregate_column}' does not exist "
+                                f"in schema '{schema.name}'."
+                            ),
+                            "type": "unknown_field",
+                        }
+                    )
+
+                for column, configuration in view.display_columns.items():
+                    field = fields.get(column)
+                    if field is None:
+                        details.append(
+                            {
+                                "location": [
+                                    "views",
+                                    index,
+                                    "display_columns",
+                                    column,
+                                ],
+                                "message": (
+                                    f"Field '{column}' does not exist in schema "
+                                    f"'{schema.name}'."
+                                ),
+                                "type": "unknown_field",
+                            }
+                        )
+                    elif (
+                        configuration.aggregation in NUMERIC_AGGREGATIONS
+                        and field.type not in NUMERIC_FIELD_TYPES
+                    ):
+                        details.append(
+                            {
+                                "location": [
+                                    "views",
+                                    index,
+                                    "display_columns",
+                                    column,
+                                    "aggregation",
+                                ],
+                                "message": (
+                                    f"Aggregation "
+                                    f"'{configuration.aggregation.value}' requires "
+                                    "a numeric field."
+                                ),
+                                "type": "incompatible_aggregation",
+                            }
+                        )
 
         if details:
             raise ApiError(
@@ -205,7 +258,7 @@ class DashboardService:
 
     @staticmethod
     def _render_view(
-        view: SummaryView | TableView,
+        view: SummaryView | TableView | AggregateTableView,
         rows: list[dict[str, Any]],
     ) -> dict[str, Any]:
         if isinstance(view, TableView):
@@ -218,17 +271,45 @@ class DashboardService:
                 ],
             }
 
+        if isinstance(view, AggregateTableView):
+            grouped_rows: dict[Any, list[dict[str, Any]]] = {}
+            for row in rows:
+                group_value = row.get(view.aggregate_column)
+                grouped_rows.setdefault(group_value, []).append(row)
+
+            rendered_rows = []
+            for group_value, group_rows in grouped_rows.items():
+                rendered_values = {}
+                for column, configuration in view.display_columns.items():
+                    values = [
+                        row[column]
+                        for row in group_rows
+                        if row.get(column) is not None
+                    ]
+                    rendered_values[column] = DashboardService._aggregate(
+                        values,
+                        configuration.aggregation,
+                    )
+
+                rendered_rows.append(
+                    {
+                        "group_value": group_value,
+                        "values": rendered_values,
+                    }
+                )
+
+            return {
+                "type": "aggregate_table",
+                "aggregate_column": view.aggregate_column,
+                "display_columns": {
+                    column: {"aggregation": configuration.aggregation.value}
+                    for column, configuration in view.display_columns.items()
+                },
+                "rows": rendered_rows,
+            }
+
         values = [row[view.field] for row in rows if row.get(view.field) is not None]
-        if view.aggregation == Aggregation.COUNT:
-            value: int | float | None = len(values)
-        elif view.aggregation == Aggregation.SUM:
-            value = sum(values)
-        elif view.aggregation == Aggregation.AVERAGE:
-            value = sum(values) / len(values) if values else None
-        elif view.aggregation == Aggregation.MIN:
-            value = min(values) if values else None
-        else:
-            value = max(values) if values else None
+        value = DashboardService._aggregate(values, view.aggregation)
 
         return {
             "type": "summary",
@@ -236,4 +317,16 @@ class DashboardService:
             "aggregation": view.aggregation.value,
             "value": value,
         }
+
+    @staticmethod
+    def _aggregate(values: list[Any], aggregation: Aggregation) -> Any:
+        if aggregation == Aggregation.COUNT:
+            return len(values)
+        if aggregation == Aggregation.SUM:
+            return sum(values)
+        if aggregation == Aggregation.AVERAGE:
+            return sum(values) / len(values) if values else None
+        if aggregation == Aggregation.MIN:
+            return min(values) if values else None
+        return max(values) if values else None
 

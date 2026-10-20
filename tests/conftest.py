@@ -20,6 +20,7 @@ TRADE_SCHEMA = {
         },
         {"name": "status", "type": "string"},
         {"name": "settled", "type": "boolean"},
+{"name": "desk", "type": "string"}
     ],
 }
 

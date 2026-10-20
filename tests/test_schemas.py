@@ -7,7 +7,7 @@ def test_registers_valid_schema(client):
     response = client.post("/schema", json=TRADE_SCHEMA)
 
     assert response.status_code == 201
-    assert response.get_json() == {"name": "trade", "fields": 4}
+    assert response.get_json() == {"name": "trade", "fields": 5}
 
 
 def test_rejects_duplicate_schema(client):

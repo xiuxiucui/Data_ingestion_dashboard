@@ -99,8 +99,18 @@ class TableView(StrictApiModel):
         return self
 
 
+class AggregateDisplayColumn(StrictApiModel):
+    aggregation: Aggregation
+
+
+class AggregateTableView(StrictApiModel):
+    type: Literal["aggregate_table"]
+    aggregate_column: FieldName
+    display_columns: dict[FieldName, AggregateDisplayColumn] = Field(min_length=1)
+
+
 DashboardView = Annotated[
-    Union[SummaryView, TableView],
+    Union[SummaryView, TableView, AggregateTableView],
     Field(discriminator="type"),
 ]
 

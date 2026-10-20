@@ -49,7 +49,8 @@
   "fields": [
     {"name": "tradeId", "type": "string", "required": true},
     {"name": "amount", "type": "number", "required": true, "aggregation": "sum"},
-    {"name": "status", "type": "string"}
+    {"name": "status", "type": "string"},
+            {"name": "desk", "type": "string"}
   ]
 }</textarea>
           <button id="send-schema" type="button">Register schema</button>
@@ -72,8 +73,12 @@
           <textarea id="ingest-payload" spellcheck="false">{
   "schema": "trade",
   "rows": [
-    {"tradeId": "T001", "amount": 1000, "status": "OPEN"},
-    {"tradeId": "T002", "amount": 1500.5, "status": "CLOSED"}
+    {"tradeId": "T001", "amount": 1000, "status": "OPEN","desk":"SG"},
+    {"tradeId": "T002", "amount": 2000.5, "status": "CLOSED","desk":"SG"},
+    {"tradeId": "T003", "amount": 3000, "status": "OPEN","desk":"HK"},
+    {"tradeId": "T004", "amount": 4000.5, "status": "CLOSED","desk":"HK"},
+    {"tradeId": "T005", "amount": 5000, "status": "OPEN","desk":"NY"},
+    {"tradeId": "T006", "amount": 6000.5, "status": "CLOSED","desk":"NY"}
   ]
 }</textarea>
           <button id="send-ingest" type="button">Ingest rows</button>
@@ -98,7 +103,15 @@
   "schema": "trade",
   "views": [
     {"type": "summary", "field": "amount", "aggregation": "sum"},
-    {"type": "table", "columns": ["tradeId", "amount", "status"]}
+    {"type": "table", "columns": ["tradeId", "amount", "status", "desk"]},
+    {
+      "type": "aggregate_table",
+      "aggregate_column": "desk",
+      "display_columns": {
+        "amount": {"aggregation": "sum"},
+        "desk": {"aggregation": "count"}
+      }
+    }
   ]
 }</textarea>
           <button id="send-dashboard" type="button">Register dashboard</button>

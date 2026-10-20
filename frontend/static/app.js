@@ -120,6 +120,8 @@ function renderDashboard(data, target) {
       target.appendChild(renderSummary(view));
     } else if (view.type === "table") {
       target.appendChild(renderTable(view));
+    } else if (view.type === "aggregate_table") {
+      target.appendChild(renderAggregateTable(view));
     }
   }
 
@@ -187,6 +189,26 @@ function renderTable(view) {
   table.appendChild(body);
   wrapper.appendChild(table);
   return wrapper;
+}
+
+function renderAggregateTable(view) {
+  const displayColumns = Object.entries(view.display_columns || {});
+  const columns = [
+    view.aggregate_column,
+    ...displayColumns.map(([column, configuration]) =>
+      `${column} (${configuration.aggregation})`),
+  ];
+  const rows = (view.rows || []).map((group) => ({
+    [view.aggregate_column]: group.group_value,
+    ...Object.fromEntries(
+      displayColumns.map(([column, configuration]) => [
+        `${column} (${configuration.aggregation})`,
+        group.values?.[column],
+      ]),
+    ),
+  }));
+
+  return renderTable({ columns, rows });
 }
 
 $("send-schema").addEventListener("click", () => sendJson({
